@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/containernetworking/cni/pkg/ns"
 	"github.com/intel/sriov-cni/pkg/config"
@@ -177,6 +178,11 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 			return fmt.Errorf("DPDK: failed to bind %s to kernel space: %s", df.Ifname, err)
 		}
 
+		// PK FIX ME
+		// unbinding from DPDK and binding to kernel driver takes a few seconds
+		// the VLAN resetting call below is failing for i40e which takes couple of seconds
+		time.Sleep(4 * time.Second)
+
 		// reset vlan for DPDK code here
 		pfLink, err := netlink.LinkByName(conf.Master)
 		if err != nil {
@@ -204,9 +210,11 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 		ifName := podifName + "d1"
 		_, err := netlink.LinkByName(ifName)
 		if err != nil {
-			return fmt.Errorf("unable to get shared PF device: %v", err)
+			//return fmt.Errorf("unable to get shared PF device: %v", err)
+			conf.Sharedvf = false
+		} else {
+			conf.Sharedvf = true
 		}
-		conf.Sharedvf = true
 	}
 
 	for i := 1; i <= config.MaxSharedVf; i++ {
