@@ -83,6 +83,15 @@ func moveIfToNetns(ifname string, netns ns.NetNS) error {
 		return fmt.Errorf("failed to lookup vf device %v: %q", ifname, err)
 	}
 
+	if err = netlink.LinkSetDown(vfDev); err != nil {
+		return fmt.Errorf("failed to down vf device %q: %v", ifname, err)
+	}
+	index := vfDev.Attrs().Index
+	vfName := fmt.Sprintf("dev%d", index)
+	if renameLink(ifname, vfName); err != nil {
+		return fmt.Errorf("failed to rename vf device %q to %q: %v", ifname, vfName, err)
+	}
+
 	if err = netlink.LinkSetUp(vfDev); err != nil {
 		return fmt.Errorf("failed to setup netlink device %v %q", ifname, err)
 	}
@@ -209,10 +218,14 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 		//check for the shared vf net interface
 		ifName := podifName + "d1"
 		_, err := netlink.LinkByName(ifName)
+<<<<<<< HEAD
 		if err != nil {
 			//return fmt.Errorf("unable to get shared PF device: %v", err)
 			conf.Sharedvf = false
 		} else {
+=======
+		if err == nil {
+>>>>>>> upstream/master
 			conf.Sharedvf = true
 		}
 	}
