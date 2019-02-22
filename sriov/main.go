@@ -12,6 +12,7 @@ import (
 	"github.com/containernetworking/cni/pkg/version"
 	"github.com/intel/multus-cni/logging"
 	"github.com/intel/sriov-cni/pkg/config"
+	"github.com/vishvananda/netlink"
 )
 
 func init() {
@@ -35,10 +36,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	defer netns.Close()
 
-	if n.IF0NAME != "" {
-		args.IfName = n.IF0NAME
-	}
-
 	// Try assigning a VF from PF
 	if n.DeviceInfo == nil && n.Master != "" {
 		// Populate device info from PF
@@ -59,7 +56,21 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	if n.DeviceInfo != nil && n.DeviceInfo.PCIaddr != "" && n.DeviceInfo.Vfid >= 0 && n.DeviceInfo.Pfname != "" {
-		if err = setupVF(n, args.IfName, args.ContainerID, netns); err != nil {
+		err = setupVF(n, args.IfName, args.ContainerID, netns)
+		defer func() {
+			if err != nil {
+				if !n.DPDKMode {
+					err = netns.Do(func(_ ns.NetNS) error {
+						_, err := netlink.LinkByName(args.IfName)
+						return err
+					})
+				}
+				if n.DPDKMode || err == nil {
+					releaseVF(n, args.IfName, args.ContainerID, netns)
+				}
+			}
+		}()
+		if err != nil {
 			return fmt.Errorf("failed to set up pod interface %q from the device %q: %v", args.IfName, n.Master, err)
 		}
 	} else {
@@ -103,10 +114,6 @@ func cmdDel(args *skel.CmdArgs) error {
 	n, err := config.LoadConf(args.StdinData)
 	if err != nil {
 		return err
-	}
-
-	if n.IF0NAME != "" {
-		args.IfName = n.IF0NAME
 	}
 
 	// skip the IPAM release for the DPDK and L2 mode
