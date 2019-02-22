@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/containernetworking/cni/pkg/ns"
+	"github.com/intel/multus-cni/logging"
 	"github.com/intel/sriov-cni/pkg/config"
 	"github.com/intel/sriov-cni/pkg/dpdk"
 	sriovtypes "github.com/intel/sriov-cni/pkg/types"
@@ -127,6 +128,8 @@ func setupVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.Ne
 		}
 	}
 
+	logging.Debugf("cid : %s, podifname %s, ns %v", cid, podifName, netns)
+
 	if conf.DPDKMode {
 		if err = dpdk.SaveDpdkConf(cid, conf.CNIDir, conf.DPDKConf); err != nil {
 			return err
@@ -220,14 +223,7 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 		//check for the shared vf net interface
 		ifName := podifName + "d1"
 		_, err := netlink.LinkByName(ifName)
-<<<<<<< HEAD
-		if err != nil {
-			//return fmt.Errorf("unable to get shared PF device: %v", err)
-			conf.Sharedvf = false
-		} else {
-=======
 		if err == nil {
->>>>>>> upstream/master
 			conf.Sharedvf = true
 		}
 	}

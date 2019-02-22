@@ -10,6 +10,7 @@ import (
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/version"
+	"github.com/intel/multus-cni/logging"
 	"github.com/intel/sriov-cni/pkg/config"
 )
 
@@ -18,6 +19,8 @@ func init() {
 	// since namespace ops (unshare, setns) are done for a single thread, we
 	// must ensure that the goroutine does not jump from OS thread to thread
 	runtime.LockOSThread()
+	logging.SetLogFile("sriov.log")
+	logging.SetLogLevel("debug")
 }
 
 func cmdAdd(args *skel.CmdArgs) error {

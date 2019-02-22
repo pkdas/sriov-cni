@@ -44,6 +44,7 @@ Q = $(if $(filter 1,$V),,@)
 all: fmt lint build
 
 $(BASE): ; $(info  setting GOPATH...)
+	$Q go get -u github.com/intel/multus-cni/logging
 	@mkdir -p $(dir $@)
 	@ln -sf $(CURDIR) $@
 
