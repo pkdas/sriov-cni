@@ -20,7 +20,7 @@ func init() {
 	// since namespace ops (unshare, setns) are done for a single thread, we
 	// must ensure that the goroutine does not jump from OS thread to thread
 	runtime.LockOSThread()
-	logging.SetLogFile("sriov.log")
+	logging.SetLogFile("/var/log/sriov-cni.log")
 	logging.SetLogLevel("debug")
 }
 
