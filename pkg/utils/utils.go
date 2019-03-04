@@ -9,7 +9,40 @@ import (
 	"strings"
 )
 
+// SRIOVDevice : for supporting misc NIC types
+type SRIOVDevice struct {
+	name     string
+	vendor   string
+	device   string
+	driver   string
+	dpdkbind bool
+}
+
 var (
+	// SRIOVDeviceList : list of SRIOV devices supported
+	SRIOVDeviceList = []SRIOVDevice{
+		SRIOVDevice{
+			name:     "i40e",
+			vendor:   "test",
+			device:   "test",
+			driver:   "test",
+			dpdkbind: true,
+		},
+		SRIOVDevice{
+			name:     "ConnectX-5",
+			vendor:   "0x15b3",
+			device:   "0x1017",
+			driver:   "mlx5_core",
+			dpdkbind: false,
+		},
+		SRIOVDevice{
+			name:     "ConnectX-5-VF",
+			vendor:   "0x15b3",
+			device:   "0x1018",
+			driver:   "mlx5_core",
+			dpdkbind: false,
+		},
+	}
 	sriovConfigured = "/sriov_numvfs"
 	// NetDirectory sysfs net directory
 	NetDirectory = "/sys/class/net"
@@ -179,4 +212,27 @@ func GetVFLinkNames(pfName string, vfID int) ([]string, error) {
 	}
 
 	return names, nil
+}
+
+// GetDPDKbind returns for VF the net driver and if dpdkbind is required
+func GetDPDKbind(addr string, pfName string, vfID int) (bool, string, error) {
+	driverLink := filepath.Join(NetDirectory, pfName, "device", fmt.Sprintf("virtfn%d", vfID), "driver")
+	driverPath, err := filepath.EvalSymlinks(driverLink)
+	if err != nil {
+		return false, "", err
+	}
+	driverStat, err := os.Stat(driverPath)
+	if err != nil {
+		return false, "", err
+	}
+	driverName := driverStat.Name()
+	for _, sriovDevice := range SRIOVDeviceList {
+		if driverName == sriovDevice.driver {
+			return sriovDevice.dpdkbind, sriovDevice.driver, nil
+		}
+	}
+	// for now return true and no error
+	// after filling SRIOVDeviceList with correct i40e device/driver info
+	// this should return false and error
+	return true, "", nil
 }

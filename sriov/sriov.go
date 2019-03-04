@@ -152,14 +152,25 @@ func setupVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.Ne
 	// /sys/class/net/enp59s0/device/device check for 0x1017 ConnectX5 - then ignore DPDK conf and always bind to kernel driver
 	// /sys/class/net/enp59s0/device/driver -> ../../../../bus/pci/drivers/mlx5_core  - points to mlx5_core
 	if conf.DPDKMode {
-		if err = dpdk.SaveDpdkConf(cid, conf.CNIDir, conf.DPDKConf); err != nil {
-			logging.Debugf("setupVF dpdk.SaveDpdkConf failed %v", err)
-			return err
+		dpdkbind, netdriver, err := utils.GetDPDKbind(conf.DeviceInfo.PCIaddr, conf.DeviceInfo.Pfname, conf.DeviceInfo.Vfid)
+		if err != nil {
+			logging.Debugf("setupVF utils.GetDPDKbind failed %v", err)
+			return fmt.Errorf("setupVF utils.GetDPDKbind failed %v", err)
 		}
-		logging.Debugf("setupVF binding DPDK")
-		rc := dpdk.Enabledpdkmode(conf.DPDKConf, vfLinks[0], true)
-		logging.Debugf("setupVF DPDK complete - cid : %s, podifname %s, ns %v", cid, podifName, netns)
-		return rc
+		if dpdkbind {
+			if err = dpdk.SaveDpdkConf(cid, conf.CNIDir, conf.DPDKConf); err != nil {
+				logging.Debugf("setupVF dpdk.SaveDpdkConf failed %v", err)
+				return err
+			}
+			logging.Debugf("setupVF binding DPDK")
+			rc := dpdk.Enabledpdkmode(conf.DPDKConf, vfLinks[0], true)
+			logging.Debugf("setupVF DPDK complete - cid : %s, podifname %s, ns %v", cid, podifName, netns)
+			return rc
+		}
+		logging.Debugf("setupVF DPDKMode enabled but not binding DPDK igb_uio driver : driver %s pciaddr %s pf %s vf %d",
+			netdriver, conf.DeviceInfo.PCIaddr, conf.DeviceInfo.Pfname, conf.DeviceInfo.Vfid)
+		// bind the netdriver
+		conf.L2Mode = true
 	}
 
 	// Sort links name if there are 2 or more PF links found for a VF;
@@ -212,43 +223,55 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 	logging.Debugf("releaseVF master %s, vf %d pf %s pcie %s ", conf.Master, conf.DeviceInfo.Vfid, conf.DeviceInfo.Pfname, conf.DeviceInfo.PCIaddr)
 	logging.Debugf("releaseVF DPDK %t L2 %t Vlan %d deviceId %s", conf.DPDKMode, conf.L2Mode, conf.Vlan, conf.DeviceID)
 	if conf.DPDKMode != false {
-		// get the DPDK net conf in cniDir
-		df, err := dpdk.GetConf(cid, podifName, conf.CNIDir)
+		dpdkbind, netdriver, err := utils.GetDPDKbind(conf.DeviceInfo.PCIaddr, conf.DeviceInfo.Pfname, conf.DeviceInfo.Vfid)
 		if err != nil {
-			logging.Debugf("releaseVF dpdk.GetConf failed %v", err)
-			return err
+			logging.Debugf("releaseVF utils.GetDPDKbind failed %v", err)
+			return fmt.Errorf("releaseVF utils.GetDPDKbind failed %v", err)
 		}
+		if dpdkbind {
+			// get the DPDK net conf in cniDir
+			df, err := dpdk.GetConf(cid, podifName, conf.CNIDir)
+			if err != nil {
+				logging.Debugf("releaseVF dpdk.GetConf failed %v", err)
+				return err
+			}
 
-		logging.Debugf("releaseVF unbind dpdk : pcieaddr %s ifname %s, kdriver %s dpdkdriver %s dpdktool %s vfid %d", df.PCIaddr, df.Ifname, df.KDriver, df.DPDKDriver, df.DPDKtool, df.VFID)
+			logging.Debugf("releaseVF unbind dpdk : pcieaddr %s ifname %s, kdriver %s dpdkdriver %s dpdktool %s vfid %d", df.PCIaddr, df.Ifname, df.KDriver, df.DPDKDriver, df.DPDKtool, df.VFID)
 
-		// bind the sriov vf to the kernel driver
-		if err := dpdk.Enabledpdkmode(df, df.Ifname, false); err != nil {
-			logging.Debugf("releaseVF dpdk.Enabledpdkmode failed %v", err)
-			return fmt.Errorf("DPDK: failed to bind %s to kernel space: %s", df.Ifname, err)
-		}
+			// bind the sriov vf to the kernel driver
+			if err := dpdk.Enabledpdkmode(df, df.Ifname, false); err != nil {
+				logging.Debugf("releaseVF dpdk.Enabledpdkmode failed %v", err)
+				return fmt.Errorf("DPDK: failed to bind %s to kernel space: %s", df.Ifname, err)
+			}
 
-		// PK FIX ME
-		// unbinding from DPDK and binding to kernel driver takes a few seconds
-		// the VLAN resetting call below is failing for i40e which takes couple of seconds
-		time.Sleep(2 * time.Second)
+			// PK FIX ME
+			// unbinding from DPDK and binding to kernel driver takes a few seconds
+			// the VLAN resetting call below is failing for i40e which takes couple of seconds
+			time.Sleep(2 * time.Second)
 
-		// reset vlan for DPDK code here
-		pfLink, err := netlink.LinkByName(conf.Master)
-		if err != nil {
-			logging.Debugf("releaseVF netlink.LinkByName failed name %s error %v", conf.Master, err)
-			return fmt.Errorf("DPDK: master device %s not found: %v", conf.Master, err)
-		}
+			// reset vlan for DPDK code here
+			pfLink, err := netlink.LinkByName(conf.Master)
+			if err != nil {
+				logging.Debugf("releaseVF netlink.LinkByName failed name %s error %v", conf.Master, err)
+				return fmt.Errorf("DPDK: master device %s not found: %v", conf.Master, err)
+			}
 
-		if err = netlink.LinkSetVfVlan(pfLink, df.VFID, 0); err != nil {
-			logging.Debugf("releaseVF netlink.LinkSetVfVlan failed vf %d error %v", df.VFID, err)
-			return fmt.Errorf("DPDK: failed to reset vlan tag for vf %d: %v", df.VFID, err)
-		}
-		logging.Debugf("releaseVF in DPDKMode is complete")
-		return nil
+			if err = netlink.LinkSetVfVlan(pfLink, df.VFID, 0); err != nil {
+				logging.Debugf("releaseVF netlink.LinkSetVfVlan failed vf %d error %v", df.VFID, err)
+				return fmt.Errorf("DPDK: failed to reset vlan tag for vf %d: %v", df.VFID, err)
+			}
+			logging.Debugf("releaseVF in DPDKMode is complete")
+			return nil
+		} // end
+		logging.Debugf("releaseVF DPDKMode enabled but not unbinding DPDK igb_uio driver : driver %s pciaddr %s pf %s vf %d",
+			netdriver, conf.DeviceInfo.PCIaddr, conf.DeviceInfo.Pfname, conf.DeviceInfo.Vfid)
+		// bind the netdriver
+		conf.L2Mode = true
 	}
 
 	netlinkExpected, err := utils.ShouldHaveNetlink(conf.Master, conf.DeviceInfo.Vfid)
 	if err != nil {
+		logging.Debugf("releaseVF utils.ShouldHaveNetlink failed ifname %s vf %d error %v", conf.Master, conf.DeviceInfo.Vfid, err)
 		return fmt.Errorf("failed to determine if interface should have netlink device: %v", err)
 	}
 	if !netlinkExpected {
