@@ -157,11 +157,11 @@ func setupVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.Ne
 			logging.Debugf("setupVF utils.GetDPDKbind failed %v", err)
 			return fmt.Errorf("setupVF utils.GetDPDKbind failed %v", err)
 		}
+		if err = dpdk.SaveDpdkConf(cid, conf.CNIDir, conf.DPDKConf); err != nil {
+			logging.Debugf("setupVF dpdk.SaveDpdkConf failed %v", err)
+			return err
+		}
 		if dpdkbind {
-			if err = dpdk.SaveDpdkConf(cid, conf.CNIDir, conf.DPDKConf); err != nil {
-				logging.Debugf("setupVF dpdk.SaveDpdkConf failed %v", err)
-				return err
-			}
 			logging.Debugf("setupVF binding DPDK")
 			rc := dpdk.Enabledpdkmode(conf.DPDKConf, vfLinks[0], true)
 			logging.Debugf("setupVF DPDK complete - cid : %s, podifname %s, ns %v", cid, podifName, netns)
