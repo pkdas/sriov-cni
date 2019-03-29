@@ -22,6 +22,7 @@ type NetConf struct {
 	Master     string         `json:"master"`
 	L2Mode     bool           `json:"l2enable"`
 	Vlan       int            `json:"vlan"`
+	Vlans      []int          `json:"vlans"`
 	DeviceID   string         `json:"deviceID"`
 	DeviceInfo *VfInformation `json:"deviceinfo,omitempty"`
 }

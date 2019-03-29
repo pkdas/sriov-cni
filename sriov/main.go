@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/containernetworking/cni/pkg/ipam"
 	"github.com/containernetworking/cni/pkg/ns"
@@ -25,6 +27,36 @@ func init() {
 	logging.SetLogLevel("debug")
 }
 
+func getVlanIndex(args *skel.CmdArgs) (int, string, error) {
+	logging.Debugf("getVlanIndex args.Args %v", args.Args)
+
+	podname := ""
+	pairs := strings.Split(args.Args, ";")
+	for _, pair := range pairs {
+		kv := strings.Split(pair, "=")
+		if len(kv) != 2 {
+			return 0, podname, fmt.Errorf("getVlanIndex: invalid pair %q", pair)
+		}
+		if kv[0] == "K8S_POD_NAME" {
+			podname = kv[1]
+			break
+		}
+	}
+
+	if len(podname) == 0 {
+		return 0, podname, fmt.Errorf("getVlanIndex: podname not found")
+	}
+
+	ss := strings.Split(podname, "-")
+	s := ss[len(ss)-1]
+
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return 0, podname, fmt.Errorf("SRIOV-CNI failed to get vlanindex podname %q: %v", podname, err)
+	}
+	return i, podname, nil
+}
+
 func cmdAdd(args *skel.CmdArgs) error {
 	n, err := config.LoadConf(args.StdinData)
 	if err != nil {
@@ -36,6 +68,17 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to open netns %q: %v", netns, err)
 	}
 	defer netns.Close()
+
+	if n.Vlans != nil {
+		index, podname, err := getVlanIndex(args)
+		if err != nil {
+			return fmt.Errorf("failed to get VLAN index for args %v err:%v", args, n.Vlans, err)
+		}
+		if index < len(n.Vlans) {
+			n.Vlan = n.Vlans[index]
+			logging.Debugf("setupVF podname : %s, podifname %s, vlan %v vlans %v", podname, args.IfName, n.Vlan, n.Vlans)
+		}
+	}
 
 	// Try assigning a VF from PF
 	if n.DeviceInfo == nil && n.Master != "" {
