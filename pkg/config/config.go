@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	sriovtypes "github.com/intel/sriov-cni/pkg/types"
 	"github.com/intel/sriov-cni/pkg/utils"
@@ -45,7 +46,9 @@ func LoadConf(bytes []byte) (*sriovtypes.NetConf, error) {
 	// DeviceID takes precedence; if we are given a VF pciaddr then work from there
 	if n.DeviceID != "" {
 		// Get rest of the VF information
-		vfInfo, err := getVfInfo(n.DeviceID)
+		//vfInfo, err := getVfInfo(n.DeviceID)
+		deviceID := strings.Split(n.DeviceID, "-")[0]
+		vfInfo, err := getVfInfo(deviceID)
 		if err != nil {
 			return nil, err
 		}

@@ -240,7 +240,7 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 
 			// bind the sriov vf to the kernel driver
 			if err := dpdk.Enabledpdkmode(df, df.Ifname, false); err != nil {
-				logging.Debugf("releaseVF dpdk.Enabledpdkmode failed %v", err)
+				logging.Debugf("releaseVF dpdk.Enabledpdkmode failed conf %v podif %s err %v", conf, podifName, err)
 				return fmt.Errorf("DPDK: failed to bind %s to kernel space: %s", df.Ifname, err)
 			}
 
