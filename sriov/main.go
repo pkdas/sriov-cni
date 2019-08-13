@@ -1,13 +1,13 @@
 package main
 
 import (
-	"errors"
+	//"errors"
 	"fmt"
 	"runtime"
 	"strconv"
 	"strings"
 
-	"github.com/containernetworking/cni/pkg/ipam"
+	//"github.com/containernetworking/cni/pkg/ipam"
 	"github.com/containernetworking/cni/pkg/ns"
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
@@ -15,7 +15,7 @@ import (
 	"github.com/intel/multus-cni/logging"
 	"github.com/intel/sriov-cni/pkg/config"
 	sriovtypes "github.com/intel/sriov-cni/pkg/types"
-	"github.com/intel/sriov-cni/pkg/utils"
+	//"github.com/intel/sriov-cni/pkg/utils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -79,36 +79,46 @@ func getVlanIndex(args *skel.CmdArgs) (int, string, error) {
 	return i, podname, nil
 }
 
-func cmdAddBondedDevice(args *skel.CmdArgs, n *sriovtypes.NetConf) error {
+func cmdAddBondedDevice(args *skel.CmdArgs, n *sriovtypes.NetConf, i int) error {
 	netns, err := ns.GetNS(args.Netns)
+
+	ifname := args.IfName + "-" + strconv.Itoa(i)
+	logging.Debugf("PKKK-X cmdAddBondedDevice DeviceID %s ifname %s", n.DeviceID, ifname)
+
 	// fill in DpdkConf from DeviceInfo
 	if n.DPDKMode {
 		n.DPDKConf.PCIaddr = n.DeviceInfo.PCIaddr
-		n.DPDKConf.Ifname = args.IfName
+		n.DPDKConf.Ifname = ifname
 		n.DPDKConf.VFID = n.DeviceInfo.Vfid
 	}
 
-	logging.Debugf("PKKK-X cmdAddBondedDevice DeviceID %s", n.DeviceID)
-
 	if n.DeviceInfo != nil && n.DeviceInfo.PCIaddr != "" && n.DeviceInfo.Vfid >= 0 && n.DeviceInfo.Pfname != "" {
-		err = setupVF(n, args.IfName, args.ContainerID, netns)
+		err = setupVF(n, ifname, args.ContainerID, netns)
+		if err != nil {
+			logging.Debugf("PKKK-ERROR cmdAddBondedDevice DeviceID %s ifname %s", n.DeviceID, ifname)
+		}
+
 		defer func() {
 			if err != nil {
 				if !n.DPDKMode {
 					err = netns.Do(func(_ ns.NetNS) error {
-						_, err := netlink.LinkByName(args.IfName)
+						_, err := netlink.LinkByName(ifname)
+						logging.Debugf("PKKK-EX cmdAddBondedDevice DeviceID %s ifname %s", n.DeviceID, ifname)
 						return err
 					})
 				}
 				if n.DPDKMode || err == nil {
-					releaseVF(n, args.IfName, args.ContainerID, netns)
+					logging.Debugf("PKKK-EX1 cmdAddBondedDevice DeviceID %s ifname %s", n.DeviceID, ifname)
+					releaseVF(n, ifname, args.ContainerID, netns)
 				}
 			}
 		}()
 		if err != nil {
-			return fmt.Errorf("failed to set up pod interface %q from the device %q: %v", args.IfName, n.Master, err)
+			logging.Debugf("PKKK-EX2 cmdAddBondedDevice DeviceID %s ifname %s", n.DeviceID, ifname)
+			return fmt.Errorf("failed to set up pod interface %q from the device %q: %v", ifname, n.Master, err)
 		}
 	} else {
+		logging.Debugf("PKKK-EX3 cmdAddBondedDevice DeviceID %s ifname %s", n.DeviceID, ifname)
 		return fmt.Errorf("VF information are not available to invoke setupVF()")
 	}
 
@@ -116,13 +126,25 @@ func cmdAddBondedDevice(args *skel.CmdArgs, n *sriovtypes.NetConf) error {
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
-	n, err := config.LoadConf(args.StdinData)
-	if err != nil {
-		return fmt.Errorf("SRIOV-CNI failed to load netconf: %v", err)
-	}
+	var result *types.Result
 
 	podname := getPodName(args)
-	logging.Debugf("PKKK-B cmdAdd podname %s ifname %s", podname, args.IfName)
+
+	n, bondedlist, err := config.LoadConf(args.StdinData)
+	if err != nil {
+		logging.Debugf("PKKK-Error podname %s ifname %s LoadConf return error", podname, args.IfName)
+		return result.Print()
+		//return fmt.Errorf("SRIOV-CNI failed to load netconf: %v", err)
+	}
+
+	// PK - FIXME
+	logging.Debugf("PKKK-MAIN podname %s ifname %s %+v", podname, args.IfName, bondedlist)
+	//return result.Print()
+
+	if bondedlist == nil {
+		logging.Debugf("PKKK-Error podname %s ifname %s bondedlist is empty", podname, args.IfName)
+		return result.Print()
+	}
 
 	netns, err := ns.GetNS(args.Netns)
 	if err != nil {
@@ -141,81 +163,27 @@ func cmdAdd(args *skel.CmdArgs) error {
 		}
 	}
 
-	// Try assigning a VF from PF
-	if n.DeviceInfo == nil && n.Master != "" {
-		// Populate device info from PF
-		if err := config.AssignFreeVF(n); err != nil {
-			return fmt.Errorf("unable to get VF information %+v", err)
+	if bondedlist != nil {
+		for i, slave := range bondedlist {
+			err = cmdAddBondedDevice(args, slave, i)
+			if err != nil {
+				logging.Debugf("PKKK-B cmdAddBondedDevice failed %v", i)
+				return fmt.Errorf("failed to add bonded device: %v", err)
+			}
 		}
 	}
 
-	if n.Sharedvf && !n.L2Mode {
-		return fmt.Errorf("l2enable mode must be true to use shared net interface %q", n.Master)
-	}
-
-	err = cmdAddBondedDevice(args, n)
-	if err != nil {
-		return fmt.Errorf("failed to add bonded device: %v", err)
-	}
-
-	netlinkExpected, err := utils.ShouldHaveNetlink(n.Master, n.DeviceInfo.Vfid)
-	if err != nil {
-		return fmt.Errorf("failed to determine if interface should have netlink device: %v", err)
-	}
-
-	// skip the IPAM allocation for the DPDK and L2 mode
-	var result *types.Result
-	if n.DPDKMode || n.L2Mode || !netlinkExpected {
-		logging.Debugf("PKKK-E cmdAdd success podname %s ifname %s", podname, args.IfName)
-		return result.Print()
-	}
-
-	logging.Debugf("PKKK-E cmdAdd shouldn't be here podname %s ifname %s", podname, args.IfName)
-
-	// run the IPAM plugin and get back the config to apply
-	result, err = ipam.ExecAdd(n.IPAM.Type, args.StdinData)
-	if err != nil {
-		return fmt.Errorf("failed to set up IPAM plugin type %q from the device %q: %v", n.IPAM.Type, n.Master, err)
-	}
-
-	if result.IP4 == nil {
-		return errors.New("IPAM plugin returned missing IPv4 config")
-	}
-
-	defer func() {
-		if err != nil {
-			ipam.ExecDel(n.IPAM.Type, args.StdinData)
-		}
-	}()
-
-	err = netns.Do(func(_ ns.NetNS) error {
-		return ipam.ConfigureIface(args.IfName, result)
-	})
-	if err != nil {
-		return err
-	}
-
-	result.DNS = n.DNS
+	// no error
 	return result.Print()
 }
 
 func cmdDel(args *skel.CmdArgs) error {
-	n, err := config.LoadConf(args.StdinData)
+	n, bondedlist, err := config.LoadConf(args.StdinData)
 	if err != nil {
 		return err
 	}
 
 	podname := getPodName(args)
-	logging.Debugf("PKKK-B cmdDel podname %s ifname %s", podname, args.IfName)
-
-	// skip the IPAM release for the DPDK and L2 mode
-	if !n.DPDKMode && !n.L2Mode && n.IPAM.Type != "" {
-		err = ipam.ExecDel(n.IPAM.Type, args.StdinData)
-		if err != nil {
-			return err
-		}
-	}
-
 	if args.Netns == "" {
 		logging.Debugf("cmdDel return podname %s ifname %s", podname, args.IfName)
 		return nil
@@ -237,6 +205,18 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("failed to open netns %q %v", netns, err)
 	}
 	defer netns.Close()
+
+	if bondedlist != nil {
+		for i, slave := range bondedlist {
+			ifname := args.IfName + "-" + strconv.Itoa(i)
+			if err = releaseVF(slave, ifname, args.ContainerID, netns); err != nil {
+				logging.Debugf("cmdDel releaseVF error1 podname %s ifname %s", podname, ifname)
+				return err
+			}
+		}
+		logging.Debugf("PKKK-E bondedlist cmdDel success podname %s ifname %s", podname, args.IfName)
+		return nil
+	}
 
 	if err = releaseVF(n, args.IfName, args.ContainerID, netns); err != nil {
 		logging.Debugf("cmdDel releaseVF error1 podname %s ifname %s", podname, args.IfName)

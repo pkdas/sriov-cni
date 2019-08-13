@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/intel/multus-cni/logging"
+	"github.com/intel/sriov-cni/pkg/dpdk"
 	sriovtypes "github.com/intel/sriov-cni/pkg/types"
 	"github.com/intel/sriov-cni/pkg/utils"
 	"github.com/vishvananda/netlink"
@@ -37,25 +39,50 @@ var (
 )
 
 // LoadConf parses and validates stdin netconf and returns NetConf object
-func LoadConf(bytes []byte) (*sriovtypes.NetConf, error) {
+func LoadConf(bytes []byte) (*sriovtypes.NetConf, []*sriovtypes.NetConf, error) {
 	n := &sriovtypes.NetConf{}
+	bondedNetConfList := make([]*sriovtypes.NetConf, 0)
 	if err := json.Unmarshal(bytes, n); err != nil {
-		return nil, fmt.Errorf("failed to load netconf: %v", err)
+		return nil, nil, fmt.Errorf("failed to load netconf: %v", err)
 	}
+	logging.Debugf("PKKK-TEST LoadConf incoming netConf %+v", n)
 
 	// DeviceID takes precedence; if we are given a VF pciaddr then work from there
 	if n.DeviceID != "" {
 		// Get rest of the VF information
 		//vfInfo, err := getVfInfo(n.DeviceID)
-		deviceID := strings.Split(n.DeviceID, "-")[0]
-		vfInfo, err := getVfInfo(deviceID)
-		if err != nil {
-			return nil, err
+
+		bondedDeviceIDList := strings.Split(n.DeviceID, "-")
+		for _, deviceID := range bondedDeviceIDList {
+			n1 := &sriovtypes.NetConf{}
+			*n1 = *n
+			n1.DeviceID = deviceID
+			if n.DPDKConf != nil {
+				n1.DPDKConf = &dpdk.Conf{}
+				*n1.DPDKConf = *n.DPDKConf
+			}
+			vfInfo, err := getVfInfo(deviceID)
+			if err != nil {
+				//return nil, err
+				logging.Debugf("PKKK-X getVfIndo error  deviceID %s", deviceID)
+			}
+			n1.DeviceInfo = vfInfo
+			n1.Master = vfInfo.Pfname
+			if n1.DPDKConf != nil {
+				n1.DPDKMode = true
+			}
+			if n1.CNIDir == "" {
+				n1.CNIDir = defaultCNIDir
+			}
+			bondedNetConfList = append(bondedNetConfList, n1)
 		}
-		n.DeviceInfo = vfInfo
-		n.Master = vfInfo.Pfname
+		for i, nc := range bondedNetConfList {
+			logging.Debugf("PKKK-X LoadConf index %d netconf %+v", i, nc)
+		}
+
+		return n, bondedNetConfList, nil
 	} else if n.Master == "" {
-		return nil, fmt.Errorf("error: SRIOV-CNI loadConf: VF pci addr OR Master name is required")
+		return nil, nil, fmt.Errorf("error: SRIOV-CNI loadConf: VF pci addr OR Master name is required")
 	}
 
 	if n.CNIDir == "" {
@@ -67,7 +94,7 @@ func LoadConf(bytes []byte) (*sriovtypes.NetConf, error) {
 		n.DPDKMode = true
 	}
 
-	return n, nil
+	return n, nil, nil
 }
 
 func getVfInfo(vfPci string) (*sriovtypes.VfInformation, error) {
