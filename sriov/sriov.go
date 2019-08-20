@@ -157,9 +157,11 @@ func setupVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.Ne
 			logging.Debugf("setupVF utils.GetDPDKbind failed %v", err)
 			return fmt.Errorf("setupVF utils.GetDPDKbind failed %v", err)
 		}
-		if err = dpdk.SaveDpdkConf(cid, conf.CNIDir, conf.DPDKConf); err != nil {
-			logging.Debugf("setupVF dpdk.SaveDpdkConf failed %v", err)
-			return err
+		if dpdkbind {
+			if err = dpdk.SaveDpdkConf(cid, conf.CNIDir, conf.DPDKConf); err != nil {
+				logging.Debugf("setupVF dpdk.SaveDpdkConf failed %v", err)
+				return err
+			}
 		}
 		if dpdkbind {
 			logging.Debugf("setupVF binding DPDK")
@@ -222,6 +224,8 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 	logging.Debugf("releaseVF start cid : %s, podifname %s, ns %v", cid, podifName, netns)
 	logging.Debugf("releaseVF master %s, vf %d pf %s pcie %s ", conf.Master, conf.DeviceInfo.Vfid, conf.DeviceInfo.Pfname, conf.DeviceInfo.PCIaddr)
 	logging.Debugf("releaseVF DPDK %t L2 %t Vlan %d deviceId %s", conf.DPDKMode, conf.L2Mode, conf.Vlan, conf.DeviceID)
+	vf := conf.DeviceInfo.Vfid
+
 	if conf.DPDKMode != false {
 		dpdkbind, netdriver, err := utils.GetDPDKbind(conf.DeviceInfo.PCIaddr, conf.DeviceInfo.Pfname, conf.DeviceInfo.Vfid)
 		if err != nil {
@@ -348,10 +352,10 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 		// reset vlan
 		if conf.Vlan != 0 {
 			err = initns.Do(func(_ ns.NetNS) error {
-				return resetVfVlan(pfName, devName)
+				return resetVfVlan(pfName, devName, vf)
 			})
 			if err != nil {
-				logging.Debugf("releaseVF resetVfVlan  error ifname %s %v %v", pfName, devName, err)
+				logging.Debugf("releaseVF resetVfVlan  error ifname vf %s %v %d %v", pfName, devName, vf, err)
 				return fmt.Errorf("failed to reset vlan: %v", err)
 			}
 		}
@@ -366,8 +370,9 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 	return nil
 }
 
-func resetVfVlan(pfName, vfName string) error {
+func resetVfVlan(pfName, vfName string, vf int) error {
 
+	/* PK FIXME - we already have VF
 	// get the ifname sriov vf num
 	vfTotal, err := utils.GetSriovNumVfs(pfName)
 	if err != nil {
@@ -394,6 +399,7 @@ func resetVfVlan(pfName, vfName string) error {
 		logging.Debugf("resetVfVlan failed to get VF id for %s", vfName)
 		return fmt.Errorf("failed to get VF id for %s", vfName)
 	}
+	*/
 
 	pfLink, err := netlink.LinkByName(pfName)
 	if err != nil {
