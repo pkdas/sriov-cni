@@ -366,7 +366,7 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 		}
 	}
 
-	logging.Debugf("releaseVF in DPDKMode is complete")
+	logging.Debugf("releaseVF in non-DPDKMode is complete")
 	return nil
 }
 
