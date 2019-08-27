@@ -266,6 +266,7 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 			logging.Debugf("releaseVF in DPDKMode is complete")
 			return nil
 		} // end
+		dpdk.GetConf(cid, podifName, conf.CNIDir)
 		logging.Debugf("releaseVF DPDKMode enabled but not unbinding DPDK igb_uio driver : driver %s pciaddr %s pf %s vf %d",
 			netdriver, conf.DeviceInfo.PCIaddr, conf.DeviceInfo.Pfname, conf.DeviceInfo.Vfid)
 		// bind the netdriver
