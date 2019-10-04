@@ -1,5 +1,9 @@
 hash: 86cb0bfce1072ba1503fb519191bc65d0bae0af4a72d44586a9cb74e23b1abc3
+<<<<<<< HEAD
 updated: 2019-05-31T02:03:52.336128704Z
+=======
+updated: 2019-08-22T19:42:02.100568965Z
+>>>>>>> vf-fix
 imports:
 - name: github.com/containernetworking/cni
   version: 530dd71e193012895ff7beee42cd64a02e1993da
@@ -49,7 +53,11 @@ imports:
   - matchers/support/goraph/util
   - types
 - name: github.com/stretchr/testify
+<<<<<<< HEAD
   version: ffdc059bfe9ce6a4e144ba849dbedead332c6053
+=======
+  version: 221dbe5ed46703ee255b1da0dec05086f5035f62
+>>>>>>> vf-fix
   subpackages:
   - assert
   - mock
@@ -74,3 +82,8 @@ testImports:
   - difflib
 - name: github.com/stretchr/objx
   version: 35313a95ee26395aa17d366c71a2ccf788fa69b6
+<<<<<<< HEAD
+=======
+- name: gopkg.in/yaml.v2
+  version: 51d6538a90f86fe93ac480b35f37b2be17fef232
+>>>>>>> vf-fix
