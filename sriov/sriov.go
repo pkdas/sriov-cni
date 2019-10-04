@@ -157,6 +157,7 @@ func setupVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.Ne
 			logging.Debugf("setupVF utils.GetDPDKbind failed %v", err)
 			return fmt.Errorf("setupVF utils.GetDPDKbind failed %v", err)
 		}
+		// save DPDK conf if DPDKMode is enabled
 		if err = dpdk.SaveDpdkConf(cid, conf.CNIDir, conf.DPDKConf); err != nil {
 			logging.Debugf("setupVF dpdk.SaveDpdkConf failed %v", err)
 			return err
@@ -222,6 +223,8 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 	logging.Debugf("releaseVF start cid : %s, podifname %s, ns %v", cid, podifName, netns)
 	logging.Debugf("releaseVF master %s, vf %d pf %s pcie %s ", conf.Master, conf.DeviceInfo.Vfid, conf.DeviceInfo.Pfname, conf.DeviceInfo.PCIaddr)
 	logging.Debugf("releaseVF DPDK %t L2 %t Vlan %d deviceId %s", conf.DPDKMode, conf.L2Mode, conf.Vlan, conf.DeviceID)
+	vf := conf.DeviceInfo.Vfid
+
 	if conf.DPDKMode != false {
 		dpdkbind, netdriver, err := utils.GetDPDKbind(conf.DeviceInfo.PCIaddr, conf.DeviceInfo.Pfname, conf.DeviceInfo.Vfid)
 		if err != nil {
@@ -279,43 +282,19 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 		return nil
 	}
 
+	ifName := podifName
+	pfName := conf.Master
+
 	initns, err := ns.GetCurrentNS()
 	if err != nil {
 		logging.Debugf("releaseVF ns.GetCurrentNS failed error %v", err)
 		return fmt.Errorf("failed to get init netns: %v", err)
 	}
 
-	if err = netns.Set(); err != nil {
-		logging.Debugf("releaseVF netns.Set failed error %v", err)
-		return fmt.Errorf("failed to enter netns %q: %v", netns, err)
-	}
+	index := 0
+	devName := ""
 
-	if conf.L2Mode != false {
-		//check for the shared vf net interface
-		ifName := podifName + "d1"
-		_, err := netlink.LinkByName(ifName)
-		if err != nil {
-			//logging.Debugf("releaseVF netlink.LinkByname failed not shared ifname %s %v", ifName, err)
-			//return fmt.Errorf("unable to get shared PF device: %v", err)
-			conf.Sharedvf = false
-		} else {
-			logging.Debugf("releaseVF netlink.LinkByname true and is shared ifname %s %v", ifName, err)
-			conf.Sharedvf = true
-		}
-	}
-
-	for i := 1; i <= config.MaxSharedVf; i++ {
-		ifName := podifName
-		pfName := conf.Master
-		if i == config.MaxSharedVf {
-			ifName = podifName + fmt.Sprintf("d%d", i-1)
-			pfName, err = utils.GetSharedPF(conf.Master)
-			if err != nil {
-				logging.Debugf("releaseVF utils.GetSharedPF error shouldn't be here ifname %s %v", conf.Master, err)
-				return fmt.Errorf("failed to look up shared PF device: %v", err)
-			}
-		}
-
+	err = netns.Do(func(_ ns.NetNS) error {
 		// get VF device
 		vfDev, err := netlink.LinkByName(ifName)
 		if err != nil {
@@ -324,7 +303,7 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 		}
 
 		// device name in init netns
-		index := vfDev.Attrs().Index
+		index = vfDev.Attrs().Index
 		devName := fmt.Sprintf("dev%d", index)
 
 		// shutdown VF device
@@ -345,41 +324,42 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 			logging.Debugf("releaseVF netlink.LinkSetNsFd  error ifname %s %v %v", ifName, vfDev, err)
 			return fmt.Errorf("failed to move vf device %q to init netns: %v", ifName, err)
 		}
+		return nil
 
-		// reset vlan
-		if conf.Vlan != 0 {
-			err = initns.Do(func(_ ns.NetNS) error {
-				return resetVfVlan(pfName, devName)
-			})
-			if err != nil {
-				logging.Debugf("releaseVF resetVfVlan  error ifname %s %v %v", pfName, devName, err)
-				return fmt.Errorf("failed to reset vlan: %v", err)
-			}
-		}
-
-		//break the loop, if the namespace has no shared vf net interface
-		if conf.Sharedvf != true {
-			break
-		}
+	})
+	if err != nil {
+		logging.Debugf("releaseVF netns.Do failed error %v", err)
+		return fmt.Errorf("failed to enter netns %q: %v", netns, err)
 	}
 
-	logging.Debugf("releaseVF in DPDKMode is complete")
+	// reset vlan
+	if conf.Vlan != 0 {
+		err = initns.Do(func(_ ns.NetNS) error {
+			return resetVfVlan(pfName, devName, vf)
+		})
+		if err != nil {
+			logging.Debugf("releaseVF resetVfVlan  error ifname vf %s %v %d %v", pfName, devName, vf, err)
+			return fmt.Errorf("failed to reset vlan: %v", err)
+		}
+
+	}
+
+	logging.Debugf("releaseVF in non-DPDKMode is complete")
 	return nil
 }
 
-func resetVfVlan(pfName, vfName string) error {
+func resetVfVlan(pfName, vfName string, vf int) error {
 
+	/* PK FIXME - we already have VF
 	// get the ifname sriov vf num
 	vfTotal, err := utils.GetSriovNumVfs(pfName)
 	if err != nil {
 		return err
 	}
-
 	if vfTotal <= 0 {
 		logging.Debugf("resetVfVlan, no virtual function in the device: %v", pfName)
 		return fmt.Errorf("no virtual function in the device: %v", pfName)
 	}
-
 	// Get VF id
 	var vf int
 	idFound := false
@@ -390,11 +370,11 @@ func resetVfVlan(pfName, vfName string) error {
 			break
 		}
 	}
-
 	if !idFound {
 		logging.Debugf("resetVfVlan failed to get VF id for %s", vfName)
 		return fmt.Errorf("failed to get VF id for %s", vfName)
 	}
+	*/
 
 	pfLink, err := netlink.LinkByName(pfName)
 	if err != nil {
@@ -407,7 +387,7 @@ func resetVfVlan(pfName, vfName string) error {
 		return fmt.Errorf("failed to reset vlan tag for vf %d: %v", vf, err)
 	}
 
-	logging.Debugf("vlan reset pfName %s vfName %s", pfName, vfName)
+	logging.Debugf("vlan reset pfName %s vfName %s, sleeping 2sec", pfName, vfName)
 
 	return nil
 }

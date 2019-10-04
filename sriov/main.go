@@ -160,6 +160,9 @@ func cmdAdd(args *skel.CmdArgs) error {
 		if index < len(n.Vlans) {
 			n.Vlan = n.Vlans[index]
 			logging.Debugf("setupVF podname : %s, podifname %s, vlan %v vlans %v", podname, args.IfName, n.Vlan, n.Vlans)
+			for _, slave := range bondedlist {
+				slave.Vlan = n.Vlans[index]
+			}
 		}
 	}
 
