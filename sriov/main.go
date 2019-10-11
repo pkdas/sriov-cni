@@ -79,10 +79,9 @@ func getVlanIndex(args *skel.CmdArgs) (int, string, error) {
 	return i, podname, nil
 }
 
-func cmdAddBondedDevice(args *skel.CmdArgs, n *sriovtypes.NetConf, i int) error {
+func cmdAddBondedDevice(args *skel.CmdArgs, n *sriovtypes.NetConf, ifname string) error {
 	netns, err := ns.GetNS(args.Netns)
 
-	ifname := args.IfName + "-" + strconv.Itoa(i)
 	logging.Debugf("PKKK-X cmdAddBondedDevice DeviceID %s ifname %s", n.DeviceID, ifname)
 
 	// fill in DpdkConf from DeviceInfo
@@ -168,11 +167,18 @@ func cmdAdd(args *skel.CmdArgs) error {
 
 	if bondedlist != nil {
 		for i, slave := range bondedlist {
-			err = cmdAddBondedDevice(args, slave, i)
+			ifname := ""
+			if len(bondedlist) == 1 {
+				ifname = args.IfName
+			} else {
+				ifname = args.IfName + "-" + strconv.Itoa(i)
+			}
+			err = cmdAddBondedDevice(args, slave, ifname)
 			if err != nil {
-				logging.Debugf("PKKK-B cmdAddBondedDevice failed %v", i)
+				logging.Debugf("PKKK-B cmdAddBondedDevice failed %v", ifname)
 				return fmt.Errorf("failed to add bonded device: %v", err)
 			}
+			logging.Debugf("PKKK-B cmdAddBondedDevice success %v", ifname)
 		}
 	}
 
@@ -211,11 +217,17 @@ func cmdDel(args *skel.CmdArgs) error {
 
 	if bondedlist != nil {
 		for i, slave := range bondedlist {
-			ifname := args.IfName + "-" + strconv.Itoa(i)
+			ifname := ""
+			if len(bondedlist) == 1 {
+				ifname = args.IfName
+			} else {
+				ifname = args.IfName + "-" + strconv.Itoa(i)
+			}
 			if err = releaseVF(slave, ifname, args.ContainerID, netns); err != nil {
 				logging.Debugf("cmdDel releaseVF error1 podname %s ifname %s", podname, ifname)
 				return err
 			}
+			logging.Debugf("PKKK-E bondedlist cmdDel success podname %s ifname %s", podname, ifname)
 		}
 		logging.Debugf("PKKK-E bondedlist cmdDel success podname %s ifname %s", podname, args.IfName)
 		return nil

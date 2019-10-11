@@ -215,8 +215,6 @@ func TestEqual(t *testing.T) {
 	if Equal(mockT, myType("1"), myType("2")) {
 		t.Error("Equal should return false")
 	}
-<<<<<<< HEAD
-=======
 }
 
 func TestSame(t *testing.T) {
@@ -240,7 +238,6 @@ func TestSame(t *testing.T) {
 	if !Same(mockT, p, p) {
 		t.Error("Same should return true")
 	}
->>>>>>> vf-fix
 }
 
 // bufferT implements TestingT. Its implementation of Errorf writes the output that would be produced by

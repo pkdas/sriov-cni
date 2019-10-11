@@ -59,11 +59,7 @@ func (suite *Suite) Assert() *assert.Assertions {
 func failOnPanic(t *testing.T) {
 	r := recover()
 	if r != nil {
-<<<<<<< HEAD
-		t.Errorf("test panicked: %v", r)
-=======
 		t.Errorf("test panicked: %v\n%s", r, debug.Stack())
->>>>>>> vf-fix
 		t.FailNow()
 	}
 }
@@ -98,18 +94,6 @@ func Run(t *testing.T, suite TestingSuite) {
 			fmt.Fprintf(os.Stderr, "testify: invalid regexp for -m: %s\n", err)
 			os.Exit(1)
 		}
-<<<<<<< HEAD
-		if ok {
-			test := testing.InternalTest{
-				Name: method.Name,
-				F: func(t *testing.T) {
-					parentT := suite.T()
-					suite.SetT(t)
-					defer failOnPanic(t)
-
-					if setupTestSuite, ok := suite.(SetupTestSuite); ok {
-						setupTestSuite.SetupTest()
-=======
 		if !ok {
 			continue
 		}
@@ -140,7 +124,6 @@ func Run(t *testing.T, suite TestingSuite) {
 				defer func() {
 					if afterTestSuite, ok := suite.(AfterTest); ok {
 						afterTestSuite.AfterTest(methodFinder.Elem().Name(), method.Name)
->>>>>>> vf-fix
 					}
 					if tearDownTestSuite, ok := suite.(TearDownTestSuite); ok {
 						tearDownTestSuite.TearDownTest()

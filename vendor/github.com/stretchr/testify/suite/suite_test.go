@@ -250,8 +250,6 @@ func (suite *SuiteTester) TestSubtest() {
 	}
 }
 
-<<<<<<< HEAD
-=======
 type SuiteSkipTester struct {
 	// Include our basic suite logic.
 	Suite
@@ -276,7 +274,6 @@ func (suite *SuiteSkipTester) TearDownSuite() {
 	suite.TearDownSuiteRunCount++
 }
 
->>>>>>> vf-fix
 // TestRunSuite will be run by the 'go test' command, so within it, we
 // can run our suite using the Run(*testing.T, TestingSuite) function.
 func TestRunSuite(t *testing.T) {
