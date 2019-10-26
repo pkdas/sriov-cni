@@ -15,7 +15,7 @@ import (
 	"github.com/intel/multus-cni/logging"
 	"github.com/intel/sriov-cni/pkg/config"
 	sriovtypes "github.com/intel/sriov-cni/pkg/types"
-	//"github.com/intel/sriov-cni/pkg/utils"
+	"github.com/intel/sriov-cni/pkg/utils"
 	"github.com/vishvananda/netlink"
 )
 
@@ -166,6 +166,17 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	if bondedlist != nil {
+		// we set the mac address of bonded interfaces to the first device
+		firstSlave := bondedlist[0]
+		hwAddress, err := utils.GetVFHwAddress(firstSlave.Master, firstSlave.DeviceInfo.Vfid)
+		logging.Debugf("PKKK-XX set bond macaddress podname : %s, podifname %s, mac %v", podname, args.IfName, hwAddress)
+		if err == nil {
+			for _, slave := range bondedlist {
+				utils.SetVFHwAddress(slave.Master, slave.DeviceInfo.Vfid, hwAddress)
+				logging.Debugf("PKKK-B set bond macaddress podname : %s, podifname %s, vf %d mac %v", podname, args.IfName, slave.DeviceInfo.Vfid, hwAddress)
+			}
+		}
+
 		for i, slave := range bondedlist {
 			ifname := ""
 			if len(bondedlist) == 1 {
@@ -180,6 +191,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 			}
 			logging.Debugf("PKKK-B cmdAddBondedDevice success %v", ifname)
 		}
+
 	}
 
 	// no error

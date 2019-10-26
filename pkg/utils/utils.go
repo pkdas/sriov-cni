@@ -2,7 +2,9 @@ package utils
 
 import (
 	"fmt"
+	"github.com/vishvananda/netlink"
 	"io/ioutil"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -235,4 +237,50 @@ func GetDPDKbind(addr string, pfName string, vfID int) (bool, string, error) {
 	// after filling SRIOVDeviceList with correct i40e device/driver info
 	// this should return false and error
 	return true, "", nil
+}
+
+// GetVFHwAddress returns VF's mac address given it's PF name as string and VF id as int
+func GetVFHwAddress(pfName string, vfID int) (string, error) {
+	ifNames, _ := GetVFLinkNames(pfName, vfID)
+
+	ifName := ifNames[0]
+	addressFile := filepath.Join(NetDirectory, ifName, "address")
+
+	if _, err := os.Lstat(addressFile); err != nil {
+		return "", fmt.Errorf("failed to open the HW address of device %q: pfname %q vf %d %v", ifName, pfName, vfID, err)
+	}
+
+	data, err := ioutil.ReadFile(addressFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to read the HW address of device %q:  pfname %q vf %d %v", ifName, pfName, vfID, err)
+	}
+
+	if len(data) == 0 {
+		return "", fmt.Errorf("no data in the file %q", addressFile)
+	}
+
+	hwAddress := strings.TrimSpace(string(data))
+	return hwAddress, nil
+}
+
+// SetVFHwAddress sets VF's mac address given it's PF name as string and VF id as int
+func SetVFHwAddress(pfName string, vfID int, mac string) error {
+	ifNames, _ := GetVFLinkNames(pfName, vfID)
+	ifName := ifNames[0]
+
+	vfLink, err := netlink.LinkByName(ifName)
+	if err != nil {
+		return fmt.Errorf("Netlink.LinkByName failed to lookup master %q: pfname %q vf %d %v", ifName, pfName, vfID, err)
+	}
+
+	hwAddr, err := net.ParseMAC(mac)
+	if err != nil {
+		return fmt.Errorf("Failed to parse mac address %s due to: %v", mac, err)
+	}
+
+	err = netlink.LinkSetHardwareAddr(vfLink, hwAddr)
+	if err != nil {
+		return fmt.Errorf("Failed to configure ifname %q pfname %q vf %d mac address to %q: %v", ifName, pfName, vfID, mac, err)
+	}
+	return nil
 }

@@ -137,6 +137,8 @@ func setupVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.Ne
 		if err = netlink.LinkSetVfVlan(m, conf.DeviceInfo.Vfid, conf.Vlan); err != nil {
 			return fmt.Errorf("failed to set vf %d vlan: %v", conf.DeviceInfo.Vfid, err)
 		}
+		logging.Debugf("setVFVLAN complete master %q vfid %v vlan %d waiting 2 sec ", conf.Master, conf.DeviceInfo.Vfid, conf.Vlan)
+		time.Sleep(2 * time.Second)
 
 		if conf.Sharedvf {
 			if err = setSharedVfVlan(conf.Master, conf.DeviceInfo.Vfid, conf.Vlan); err != nil {
@@ -263,7 +265,8 @@ func releaseVF(conf *sriovtypes.NetConf, podifName string, cid string, netns ns.
 				logging.Debugf("releaseVF netlink.LinkSetVfVlan failed vf %d error %v", df.VFID, err)
 				return fmt.Errorf("DPDK: failed to reset vlan tag for vf %d: %v", df.VFID, err)
 			}
-			logging.Debugf("releaseVF in DPDKMode is complete")
+			logging.Debugf("releaseVF in DPDKMode is complete, wait 2 sec after VLAN reset")
+			time.Sleep(2 * time.Second)
 			return nil
 		} // end
 		dpdk.GetConf(cid, podifName, conf.CNIDir)
@@ -388,6 +391,7 @@ func resetVfVlan(pfName, vfName string, vf int) error {
 	}
 
 	logging.Debugf("vlan reset pfName %s vfName %s, sleeping 2sec", pfName, vfName)
+	time.Sleep(2 * time.Second)
 
 	return nil
 }
