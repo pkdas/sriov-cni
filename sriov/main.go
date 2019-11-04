@@ -166,14 +166,16 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 
 	if bondedlist != nil {
-		// we set the mac address of bonded interfaces to the first device
-		firstSlave := bondedlist[0]
-		hwAddress, err := utils.GetVFHwAddress(firstSlave.Master, firstSlave.DeviceInfo.Vfid)
-		logging.Debugf("PKKK-XX set bond macaddress podname : %s, podifname %s, mac %v", podname, args.IfName, hwAddress)
-		if err == nil {
-			for _, slave := range bondedlist {
-				utils.SetVFHwAddress(slave.Master, slave.DeviceInfo.Vfid, hwAddress)
-				logging.Debugf("PKKK-B set bond macaddress podname : %s, podifname %s, vf %d mac %v", podname, args.IfName, slave.DeviceInfo.Vfid, hwAddress)
+		if len(bondedlist) > 1 {
+			// we set the mac address of bonded interfaces to the first device
+			firstSlave := bondedlist[0]
+			hwAddress, err := utils.GetVFHwAddress(firstSlave.Master, firstSlave.DeviceInfo.Vfid)
+			logging.Debugf("PKKK-XX set bond macaddress podname : %s, podifname %s, mac %v", podname, args.IfName, hwAddress)
+			if err == nil {
+				for _, slave := range bondedlist {
+					utils.SetVFHwAddress(slave.Master, slave.DeviceInfo.Vfid, hwAddress)
+					logging.Debugf("PKKK-B set bond macaddress podname : %s, podifname %s, vf %d mac %v", podname, args.IfName, slave.DeviceInfo.Vfid, hwAddress)
+				}
 			}
 		}
 
@@ -191,7 +193,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 			}
 			logging.Debugf("PKKK-B cmdAddBondedDevice success %v", ifname)
 		}
-
 	}
 
 	// no error
@@ -228,6 +229,13 @@ func cmdDel(args *skel.CmdArgs) error {
 	defer netns.Close()
 
 	if bondedlist != nil {
+		if len(bondedlist) > 1 {
+			hwAddress := "00:00:00:00:00:00"
+			for _, slave := range bondedlist {
+				utils.SetVFHwAddress(slave.Master, slave.DeviceInfo.Vfid, hwAddress)
+				logging.Debugf("PKKK-B clearing bond macaddress podname : %s, podifname %s, vf %d mac %v", podname, args.IfName, slave.DeviceInfo.Vfid, hwAddress)
+			}
+		}
 		for i, slave := range bondedlist {
 			ifname := ""
 			if len(bondedlist) == 1 {
