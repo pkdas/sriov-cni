@@ -174,7 +174,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 			if err == nil {
 				for _, slave := range bondedlist {
 					utils.SetVFHwAddress(slave.Master, slave.DeviceInfo.Vfid, hwAddress)
-					logging.Debugf("PKKK-B set bond macaddress podname : %s, podifname %s, vf %d mac %v", podname, args.IfName, slave.DeviceInfo.Vfid, hwAddress)
+					logging.Debugf("PKKK-B set bond macaddress podname : %s podifname %s master %s vf %d mac %v", podname, args.IfName, slave.Master, slave.DeviceInfo.Vfid, hwAddress)
 				}
 			}
 		}
@@ -229,13 +229,6 @@ func cmdDel(args *skel.CmdArgs) error {
 	defer netns.Close()
 
 	if bondedlist != nil {
-		if len(bondedlist) > 1 {
-			hwAddress := "00:00:00:00:00:00"
-			for _, slave := range bondedlist {
-				utils.SetVFHwAddress(slave.Master, slave.DeviceInfo.Vfid, hwAddress)
-				logging.Debugf("PKKK-B clearing bond macaddress podname : %s, podifname %s, vf %d mac %v", podname, args.IfName, slave.DeviceInfo.Vfid, hwAddress)
-			}
-		}
 		for i, slave := range bondedlist {
 			ifname := ""
 			if len(bondedlist) == 1 {
@@ -248,6 +241,13 @@ func cmdDel(args *skel.CmdArgs) error {
 				return err
 			}
 			logging.Debugf("PKKK-E bondedlist cmdDel success podname %s ifname %s", podname, ifname)
+		}
+		if len(bondedlist) > 1 {
+			hwAddress := "00:00:00:00:00:00"
+			for _, slave := range bondedlist {
+				utils.SetVFHwAddress(slave.Master, slave.DeviceInfo.Vfid, hwAddress)
+				logging.Debugf("PKKK-B clearing bond macaddress podname : %s, podifname %s, vf %d mac %v", podname, args.IfName, slave.DeviceInfo.Vfid, hwAddress)
+			}
 		}
 		logging.Debugf("PKKK-E bondedlist cmdDel success podname %s ifname %s", podname, args.IfName)
 		return nil
